@@ -1,0 +1,156 @@
+---
+title: "ML Project Report"
+author: "Azeez Sadiq"
+date: "October 25, 2015"
+output: html_document
+---
+### Executive Summary
+
+This is the course project report for Machine Learning Course.The algorithm selected for use in this project is the Stochastic Gradient Boosting algorithm. The report describes the implementation of the algorithm as well as the tuning. Cross-validation is performed as well and an attempt made to estimate the out-of-sample error. The algorithm is implemented quite successfully indicating an accuracy of 99% on the testing set. The `caret` package was used for training the model.
+
+### Data Splitting
+The data was first loaded into R. This was then split using the `createDataPartition` command. As per standard practice, the data set was split into 2 portions: the training data and the test data. The training data comprised of 70% of the original data and the test data made up the remaining 30%. The seed was also set to 1111 to ensure that results would be reproducible during retesting of the script. This would affect the partitioning of the original data set if not set to a fixed value.
+
+The splitting of the data was performed on the variable `classe` in the original dataset. This was done because the `classe` is the outcome variable. It constitutes standard practice to partition data in such a way that all possible outcomes are divided appropriately in both training and testing sets.
+
+```{r eval=FALSE}
+library(caret)
+data<-read.csv("pml-training.csv")
+set.seed(1111)
+partition <- createDataPartition(data$classe, p = .7, list = FALSE)
+training <- data[ partition,]
+testing  <- data[-partition,]
+```
+
+### Preprocessing
+
+The data was preprocessed by observing that the training data set consisted of quite a few variables(columns) with either `NA` or no entry in them. These were removed using the following code. This helped remove a lot of variables. It trimmed the data set down from 160 variables to 60 variables. The variable of the user's name in the column 1 was then also deleted as this is considered to be an unnecessary variable for use in prediction of the outcome.
+
+An arbitrary value of 13000 is used to decide whether a column with `NA` or `0` will be deleted or not. This follows as it would even no column is completely empty and so we must set an arbitrary value by ourselves to decide which columns are to be kept and which discarded.
+
+The columns containing no value in them are found by locating `""` and then replaced by `NA`.
+
+```{r eval=FALSE}
+training[training==""] <- NA
+a <- colSums(is.na(training))
+training <- training[,a<13000]
+training <- training[,-1]
+```
+
+### Cross Validation
+
+Cross Validation had to be defined at the onset because the the algorithm to be used would be the Stochastic Gradient Boosting method. For this a `traincontrol` object was defined using the following code. It was decided to perform K-fold cross validation with K=10 and the process repeated 3 times. This would ensure a good cross validation and is in line with standard cross validation technique. It would also ensure that we would begin to get good estimates of our out-of-sample error. Of course, the best estimate of out-of-sample error would be when we test our model on the testing data.
+
+```{r eval = FALSE}
+fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+```
+
+### Model tuning
+
+The algorithm of Stochastic Gradient Boosting has the following tuning parameters:
+
+Tuning Parameter            |`Argument Form`
+----------------------------|---------------------
+1. No of Boosting Iterations|`n.trees` 
+2. Max Tree Depth           |`interaction.depth` 
+3. Shrinkage                |`shrinkage`
+4. Min. Terminal Node Size  |`n.minobsinnode`
+
+These would be fitted into a `expand.grid` object that would then be given to the `train` function in the `tuneGrid` argument. These parameters would be changed manually each time to try to achieve the best accuracy. It was decided to tweak only the first two parameters initially and observe the change in accuracy. It turned out eventually that there was no need of changing the later two parameters as a 99% accuracy was achieved beforehand.
+
+The performance metric used to gauge the algorithm would be the default of accuracy.
+
+#### Model 1
+
+The no. of boosting iterations were selected as 1 and 5. The max tree depths were selected as 5 ad 10. Thus, 4 sets of tuning parameters would be used. Of course, the algorithm uses the best case parameters and fits them to the model in the final fit. The code for this is displayed.
+
+```{r, eval=FALSE}
+gbmGrid <-  expand.grid(interaction.depth = c(1,5),
+                        n.trees = (1:2)*5,
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+
+fit<-train(classe ~ ., data=training, method="gbm",tuneGrid = gbmGrid,trControl = fitControl)
+pred<-predict(fit,training)
+```
+
+It was identified that the main boost in accuracy came from increasing the maximum tree depth from 1 to 5. Only an incremental accuracy increase was observed by increasing the number of iterations.
+
+```{r, echo=FALSE,fig.align='centre',fig.cap="Accuracy of Model 1"}
+load("plots.RData")
+library(caret)
+plot(fit)
+confusionMatrix(pred,training$classe)
+```
+
+#### Model 2
+
+The next model was trained increasing the maximum tree depth to 10 and 15. The other parameters were untouched. 
+
+```{r, eval=FALSE}
+gbmGrid2 <-  expand.grid(interaction.depth = c(1,5),
+                        n.trees = (2:3)*10,
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+
+fit2<-train(classe ~ ., data=training, method="gbm",tuneGrid = gbmGrid2,trControl = fitControl)
+pred2<-predict(fit2,training)
+```
+
+The results indicate the accuracy has increased again. In fact, it reaches an accurcy of almost 99% for when the maximum tree depth is 15 and the nmber of boosting iterations. However, it is to be noted that this process is computationally expensive.
+
+```{r, echo=FALSE,fig.align='centre',fig.cap="Accuracy of Model 2"}
+plot(fit2)
+confusionMatrix(pred2,training$classe)
+```
+
+#### Model 3
+
+Finally, it was decided to increase the no of boosting iterations to 20 and 30. This was done because this is less comptationally expensive. A further increase in tree depth would not have been as useful considering the amount of time it would take to run the code. 
+
+```{r, eval=FALSE}
+gbmGrid3 <-  expand.grid(interaction.depth = c(10,15),
+                        n.trees = (2:3)*10,
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+fit3<-train(classe ~ ., data=training, method="gbm",tuneGrid = gbmGrid3,trControl = fitControl)
+pred3<-predict(fit3,training)
+```
+
+The final model accuracy is shown to be exceeding 99% for all cases.
+
+```{r, echo=FALSE,fig.align='centre',fig.cap="Accuracy of Model 3"}
+plot(fit3)
+confusionMatrix(pred3,training$classe)
+```
+
+### Testing Dataset
+
+The accuracy has been estimated to be 99% up till this point. However, it is to be noted that accuracy is based on predictions involving the training data, which is itself used to train the model. This can possibly lead to overfitting. Thus, for a truer out-of-sample estimate, the model should now be tested on the untouched testing dataset. Some people suggest that the training and testing data sets should be merged for this prediction. However, I opine that only the testing data set should be used because this will lead to the worst possible accuracy as this is data completely unseen by the model. This will undoubtedly lead us to the most conservative value of the out-of-sample error.
+
+The testing data was first preprocessed to remove the unnecessary columns to bring it in parity with the training data set.
+
+```{r, eval=FALSE}
+testing[testing==""]<-NA
+testing<-testing[,a<13000]
+testing<-testing[,-1]
+```
+
+Then it is tested according to the following code.
+
+```{r eval=FALSE}
+pred4<-predict(fit3,testing)
+confusionMatrix(pred4,testing$classe)
+```
+
+The results are as follows:
+
+```{r echo=FALSE}
+confusionMatrix(pred4,testing$classe)
+```
+
+This indicates an accuracy of 99.89% which means our out-of-sample error is 0.11%. It is to be noted that the accuracy on the testing dataset is also less (although only marginally) than the training dataset accuracy of 99.91%. This is in accordance with theory.
+
+### Closing Comments
+
+A successful model with accuracy of more than 99% has been developed and successfully tested for the project. It is to be noted that alternative approaches could have entailed use of several models initiall followed by subsequent tuning of the best one. However, the accuracy I achieved with my very first model convinced me to tune this model further rather than opt for another one.
